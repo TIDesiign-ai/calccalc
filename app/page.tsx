@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState } from "react";
 
 type InputKey =
   | "mathRequired"
@@ -18,6 +18,17 @@ type InputKey =
   | "comprehensive";
 
 type Inputs = Record<InputKey, string>;
+
+type EarnedCourse = {
+  category: string;
+  name: string;
+  teacher: string;
+  exam: string;
+  score: string;
+  grade: string;
+  credits: number;
+  year: string;
+};
 type RowKind = "requirement" | "earned" | "enrolled" | "shortage";
 type Field = { key: string; label: string; group: string; inputKey?: InputKey; derived?: boolean };
 
@@ -224,6 +235,42 @@ function parsePastedGradeTable(source: string): { required: Inputs; earned: Inpu
   return { required, earned, enrolled, rowsFound, cellsFound };
 }
 
+function parseEarnedCourses(source: string): EarnedCourse[] {
+  const doc = new DOMParser().parseFromString(source, "text/html");
+  const table = doc.querySelector<HTMLTableElement>("#tblShutoku");
+  if (!table) return [];
+
+  const courses: EarnedCourse[] = [];
+  for (const row of Array.from(table.querySelectorAll("tr")).slice(1)) {
+    const cells = Array.from(row.cells);
+    if (cells.length < 7) continue;
+    const read = (index: number) => (cells[index]?.textContent ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const category = read(0).replace(/^《|》$/g, "").trim();
+    const name = read(1);
+    const creditText = read(6).replace(/[,，\s]/g, "");
+    if (!category || !name || !creditText) continue;
+    const credits = Number(creditText);
+    if (!Number.isFinite(credits)) continue;
+
+    courses.push({
+      category,
+      name,
+      teacher: read(2),
+      exam: read(3),
+      score: read(4),
+      grade: read(5),
+      credits,
+      year: read(7),
+    });
+  }
+  return courses;
+}
+
 const inputStyle: React.CSSProperties = {
   width: 76,
   minWidth: 76,
@@ -253,7 +300,8 @@ export default function Home() {
   const [enrolled, setEnrolled] = useState<Inputs>({ ...INITIAL_INPUTS });
   const [gradeFileName, setGradeFileName] = useState("");
   const [importMessage, setImportMessage] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [earnedCourses, setEarnedCourses] = useState<EarnedCourse[]>([]);
+  const [courseSearch, setCourseSearch] = useState("");
 
   const totalRequired = num(getCellValue("requirement", "graduationTotal", required, earned, enrolled));
   const totalEarned = num(getCellValue("earned", "graduationTotal", required, earned, enrolled));
@@ -276,6 +324,55 @@ export default function Home() {
     })).filter((group) => group.required > 0);
   }, [required, earned, enrolled]);
 
+  const creditCardGroups = useMemo(() => {
+    const makeCards = (fields: { key: InputKey; label: string; group: string }[]) =>
+      fields.map((field) => {
+        const requiredCredits = num(required[field.key]);
+        const earnedCredits = num(earned[field.key]);
+        const enrolledCredits = num(enrolled[field.key]);
+        const shortageCredits = Math.max(0, requiredCredits - earnedCredits);
+        const progressPercent = requiredCredits > 0
+          ? Math.min(100, (earnedCredits / requiredCredits) * 100)
+          : 0;
+        const hasData = [required[field.key], earned[field.key], enrolled[field.key]]
+          .some((value) => value.trim() !== "");
+        return { ...field, requiredCredits, earnedCredits, enrolledCredits, shortageCredits, progressPercent, hasData };
+      });
+
+    const selectiveKeys: InputKey[] = [
+      "mathElective", "socialElective", "careerElective", "artElective",
+      "languageElective", "vocationalElective", "developmentElective",
+    ];
+    const mandatoryKeys: InputKey[] = [
+      "mathRequired", "careerRequired", "vocationalRequired", "vocationalCore", "developmentRequired",
+    ];
+    const otherKeys: InputKey[] = ["comprehensive"];
+
+    return {
+      selective: makeCards(INPUT_FIELDS.filter((field) => selectiveKeys.includes(field.key))),
+      mandatory: makeCards(INPUT_FIELDS.filter((field) => mandatoryKeys.includes(field.key))),
+      other: makeCards(INPUT_FIELDS.filter((field) => otherKeys.includes(field.key))),
+    };
+  }, [required, earned, enrolled]);
+
+  const filteredEarnedCourses = useMemo(() => {
+    const query = courseSearch.trim().toLocaleLowerCase("ja");
+    return earnedCourses.filter((course) =>
+      !query || `${course.name} ${course.category} ${course.teacher} ${course.grade} ${course.year}`
+        .toLocaleLowerCase("ja")
+        .includes(query),
+    );
+  }, [earnedCourses, courseSearch]);
+
+  const groupedEarnedCourses = useMemo(() => {
+    const groups = new Map<string, EarnedCourse[]>();
+    for (const course of filteredEarnedCourses) {
+      if (!groups.has(course.category)) groups.set(course.category, []);
+      groups.get(course.category)!.push(course);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b, "ja"));
+  }, [filteredEarnedCourses]);
+
   function updateInput(kind: "requirement" | "earned" | "enrolled", key: InputKey, value: string) {
     const setter = kind === "requirement" ? setRequired : kind === "earned" ? setEarned : setEnrolled;
     setter((current) => ({ ...current, [key]: value }));
@@ -288,72 +385,29 @@ export default function Home() {
   }
 
   async function importGradeFile(file?: File) {
-    if (!file) {
-      setImportMessage("ファイルが選択されていません。");
-      return;
-    }
-
+    if (!file) return;
     setGradeFileName(file.name);
-    setImportMessage(`読み込み開始：${file.name}（${file.size} bytes）`);
-
+    setImportMessage("");
     try {
-      const source = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = () => {
-          if (typeof reader.result === "string") {
-            resolve(reader.result);
-          } else {
-            reject(new Error("ファイル内容をテキストとして取得できませんでした。"));
-          }
-        };
-
-        reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました。"));
-        reader.readAsText(file);
-      });
-
-      setImportMessage(
-        `ファイル読み込み成功：${source.length}文字。成績表を解析しています...`
-      );
-
-      let html = source;
-
-      // MHT/MHTMLの場合は、HTML本文を含む可能性があることを通知する。
-      if (/\.mhtml?$/i.test(file.name)) {
-        setImportMessage(
-          `MHTファイルは読み込めました（${source.length}文字）が、MIME形式の解析は未対応です。HTML形式で保存したファイルも試してください。`
-        );
+      const source = await file.text();
+      if (!/<table[\s>]/i.test(source) && !/<!doctype\s+html|<html[\s>]/i.test(source)) {
+        setImportMessage("HTMLファイルとして認識できませんでした。.html または .htm ファイルを選択してください。");
         return;
       }
-
-      const parsed = parsePastedGradeTable(html);
-
+      const parsed = parsePastedGradeTable(source);
+      const parsedCourses = parseEarnedCourses(source);
       if (parsed.rowsFound < 2 || parsed.cellsFound === 0) {
-        const doc = new DOMParser().parseFromString(source, "text/html");
-        const tableCount = doc.querySelectorAll("table").length;
-        const hasTargetTable =
-          doc.querySelector("#ctlTaniShukei_tblShukei") !== null;
-
-        setImportMessage(
-          `解析失敗：${source.length}文字 / テーブル数 ${tableCount} / ` +
-          `対象テーブル ${hasTargetTable ? "あり" : "なし"} / ` +
-          `検出行 ${parsed.rowsFound} / 単位データ ${parsed.cellsFound}`
-        );
+        setImportMessage("成績表を見つけられませんでした。Active Academyから保存したHTMLか、成績表テーブルを含むHTMLファイルを選択してください。");
         return;
       }
-
       setRequired(parsed.required);
       setEarned(parsed.earned);
       setEnrolled(parsed.enrolled);
-
-      setImportMessage(
-        `読み込み完了：${file.name} から ${parsed.rowsFound}行・${parsed.cellsFound}個の単位データを取り込みました。`
-      );
-    } catch (error) {
-      console.error("成績表ファイルの読み込みエラー:", error);
-      setImportMessage(
-        `読み込みエラー：${error instanceof Error ? error.message : String(error)}`
-      );
+      setEarnedCourses(parsedCourses);
+      setCourseSearch("");
+      setImportMessage(`読み込み完了：${file.name} から ${parsed.rowsFound}行・${parsed.cellsFound}個の単位データ、修得科目 ${parsedCourses.length}件を取り込みました。不足単位は自動計算します。`);
+    } catch {
+      setImportMessage("ファイルを読み込めませんでした。HTMLファイルを確認してください。");
     }
   }
 
@@ -409,80 +463,12 @@ export default function Home() {
           <div style={{ color: "#3563e9", fontSize: 11, fontWeight: 800 }}>STEP 01</div>
           <h2 style={{ fontSize: 20, margin: "5px 0 8px" }}>成績表をインポート</h2>
           <p style={{ color: "#718096", fontSize: 13, lineHeight: 1.8, marginTop: 0 }}>Active Academyの成績表をHTMLファイル（.html / .htm）として保存し、ここから選択してください。ファイルはブラウザ内で解析し、サーバーには送信しません。</p>
-          <div
-            style={{
-              position: "relative",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              minHeight: 150,
-              border: "2px dashed #b8c8e8",
-              borderRadius: 12,
-              padding: 20,
-              background: "#f8faff",
-              textAlign: "center",
-              overflow: "hidden",
-            }}
-          >
-            <span style={{ fontSize: 28 }} aria-hidden="true">
-              ⇧
-            </span>
-
-            <strong style={{ fontSize: 15, color: "#26344d" }}>
-              成績表のHTMLファイルを選択
-            </strong>
-
-            <span style={{ fontSize: 12, color: "#718096" }}>
-              {gradeFileName || ".html / .htm / .mht 対応"}
-            </span>
-
-            <div
-              style={{
-                padding: "10px 16px",
-                border: "1px solid #d6deeb",
-                borderRadius: 10,
-                background: "#fff",
-                color: "#26344d",
-                fontWeight: 650,
-                pointerEvents: "none",
-              }}
-            >
-              ファイルを選ぶ
-            </div>
-
-            <input
-              type="file"
-              accept=".html,.htm,.mht,.mhtml"
-              onChange={(event) => {
-                const input = event.currentTarget;
-                const file = input.files?.[0];
-
-                if (!file) {
-                  setImportMessage("ファイルを取得できませんでした。");
-                  return;
-                }
-
-                setImportMessage(
-                  `イベント発火：${file.name}（${file.size} bytes）`
-                );
-
-                input.value = "";
-                void importGradeFile(file);
-              }}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                opacity: 0,
-                cursor: "pointer",
-                zIndex: 10,
-              }}
-            />
-          </div>
+          <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 150, border: "2px dashed #b8c8e8", borderRadius: 12, padding: 20, background: "#f8faff", cursor: "pointer", textAlign: "center" }}>
+            <span style={{ fontSize: 28 }} aria-hidden="true">⇧</span>
+            <strong style={{ fontSize: 15, color: "#26344d" }}>成績表のHTMLファイルを選択</strong>
+            <span style={{ fontSize: 12, color: "#718096" }}>{gradeFileName || ".html / .htm 対応"}</span>
+            <input type="file" accept=".html,.htm,text/html" onChange={(event) => { void importGradeFile(event.target.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} />
+          </label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 12 }}>
             <span style={{ fontSize: 12, color: "#718096" }}>※ ファイル全体から成績表テーブルを自動検出します。</span>
           </div>
@@ -495,31 +481,7 @@ export default function Home() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <button onClick={clearForm} style={buttonStyle}>すべてクリア</button>
               <button onClick={exportJson} style={buttonStyle}>JSONを書き出す ↓</button>
-              <label
-                style={{
-                  ...buttonStyle,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                JSON入力テスト
-                <input
-                  type="file"
-                  accept="*/*"
-                  onChange={(event) => {
-                    const file = event.currentTarget.files?.[0];
-
-                    window.alert(
-                      file
-                        ? `JSON側の入力は動作：${file.name}`
-                        : "ファイルが取得できません"
-                    );
-
-                    event.currentTarget.value = "";
-                  }}
-                />
-              </label>
+              <label style={{ ...buttonStyle, display: "inline-flex", alignItems: "center" }}>JSONを読み込む<input type="file" accept="application/json,.json" onChange={(event) => { importJson(event.target.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
             </div>
           </div>
           <p style={{ color: "#718096", fontSize: 12, lineHeight: 1.8, marginTop: 0 }}>白い入力欄に数値を入力してください。合計列・不足単位は自動計算されるため、入力は不要です。表は横にスクロールできます。</p>
@@ -582,6 +544,129 @@ export default function Home() {
               return <div key={category.key}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8, fontSize: 12 }}><span>{category.label}</span><span style={{ whiteSpace: "nowrap", color: "#718096" }}><strong style={{ color: "#172033" }}>{category.earned}</strong> / {category.required}</span></div><div style={{ height: 6, background: "#edf0f5", borderRadius: 10, overflow: "hidden" }}><div style={{ width: `${ratio}%`, height: "100%", background: "#5a80e5", borderRadius: 10 }} /></div>{category.enrolled > 0 && <div style={{ fontSize: 11, color: "#a66b12", marginTop: 6 }}>履修中：{category.enrolled}単位</div>}</div>;
             })}
           </div>
+        </section>
+
+        <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 22, marginBottom: 22 }}>
+          <h2 style={{ fontSize: 20, margin: "0 0 6px" }}>選択科目の取得状況</h2>
+          <p style={{ margin: "0 0 16px", color: "#718096", fontSize: 12, lineHeight: 1.7 }}>カテゴリごとに修得単位数と卒業要件を比較します。不足単位は「必要単位 − 修得単位」で表示します。</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            {creditCardGroups.selective.map((card) => (
+              <article key={card.key} style={{ border: `1px solid ${card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
+                <div style={{ fontSize: 13, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700, minHeight: 36 }}>{card.label}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 5, margin: "10px 0 9px" }}>
+                  <strong style={{ fontSize: 25, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
+                  <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
+                </div>
+                <div style={{ height: 7, background: card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20, transition: "width .2s" }} /></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, fontSize: 12 }}>
+                  <strong style={{ color: card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong>
+                  {card.enrolledCredits > 0 && <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#a66b12" }}>履修中：{card.enrolledCredits}</span>}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 22, marginBottom: 22 }}>
+          <h2 style={{ fontSize: 20, margin: "0 0 6px" }}>必修・コア科目の取得状況</h2>
+          <p style={{ margin: "0 0 16px", color: "#718096", fontSize: 12, lineHeight: 1.7 }}>必修科目と職業専門コア科目について、修得済み単位と不足単位を確認できます。</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            {creditCardGroups.mandatory.map((card) => (
+              <article key={card.key} style={{ border: `1px solid ${card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
+                <div style={{ fontSize: 13, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700, minHeight: 36 }}>{card.label}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 5, margin: "10px 0 9px" }}>
+                  <strong style={{ fontSize: 25, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
+                  <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
+                </div>
+                <div style={{ height: 7, background: card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20, transition: "width .2s" }} /></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, fontSize: 12 }}>
+                  <strong style={{ color: card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong>
+                  {card.enrolledCredits > 0 && <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#a66b12" }}>履修中：{card.enrolledCredits}</span>}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 22, marginBottom: 22 }}>
+          <h2 style={{ fontSize: 20, margin: "0 0 6px" }}>その他の卒業要件</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            {creditCardGroups.other.map((card) => (
+              <article key={card.key} style={{ border: `1px solid ${card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
+                <div style={{ fontSize: 13, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700 }}>{card.label}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 5, margin: "10px 0 9px" }}>
+                  <strong style={{ fontSize: 25, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
+                  <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
+                </div>
+                <div style={{ height: 7, background: card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20 }} /></div>
+                <div style={{ marginTop: 12, fontSize: 12 }}><strong style={{ color: card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong></div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 22, marginBottom: 22 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }}>
+            <div>
+              <h2 style={{ fontSize: 20, margin: 0 }}>これまでに修得した科目</h2>
+              <p style={{ color: "#718096", fontSize: 12, lineHeight: 1.7, margin: "6px 0 0" }}>読み込んだ成績表の「修得成績」から科目を一覧表示します。</p>
+            </div>
+            <strong style={{ color: "#3563e9", whiteSpace: "nowrap" }}>{filteredEarnedCourses.length}科目・{filteredEarnedCourses.reduce((sum, course) => sum + course.credits, 0)}単位</strong>
+          </div>
+
+          {earnedCourses.length > 0 && (
+            <input
+              aria-label="修得科目を検索"
+              value={courseSearch}
+              onChange={(event) => setCourseSearch(event.target.value)}
+              placeholder="科目名・分野・教員・評価・年度で検索"
+              style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid #d5deec", borderRadius: 9, fontSize: 13, marginBottom: 16 }}
+            />
+          )}
+
+          {groupedEarnedCourses.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "28px 12px", color: "#718096", fontSize: 13, lineHeight: 1.8 }}>
+              {earnedCourses.length === 0
+                ? "成績表HTMLを読み込むと、修得済み科目がここに表示されます。"
+                : "検索条件に一致する科目がありません。"}
+            </div>
+          ) : groupedEarnedCourses.map(([category, courses]) => (
+            <section key={category} style={{ marginBottom: 16, border: "1px solid #e5eaf3", borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ background: "#f2f5fc", padding: "11px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <h3 style={{ fontSize: 14, margin: 0 }}>{category}</h3>
+                <span style={{ fontSize: 12, color: "#718096", whiteSpace: "nowrap" }}>{courses.length}科目・{courses.reduce((sum, course) => sum + course.credits, 0)}単位</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      {["科目名", "教員", "試験区分", "素点", "評価", "単位", "修得年度"].map((label) => (
+                        <th key={label} style={{ background: "#fbfcfe", color: "#59667c", textAlign: ["素点", "評価", "単位"].includes(label) ? "center" : "left", padding: "10px 12px", borderBottom: "1px solid #e5eaf3", whiteSpace: "nowrap", fontWeight: 650 }}>{label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {courses.map((course, index) => (
+                      <tr key={`${course.name}-${course.year}-${index}`}>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #edf0f5", fontWeight: 600 }}>{course.name}</td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #edf0f5", whiteSpace: "nowrap", color: "#59667c" }}>{course.teacher || "—"}</td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #edf0f5", whiteSpace: "nowrap" }}>{course.exam || "—"}</td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #edf0f5", textAlign: "center" }}>{course.score || "—"}</td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #edf0f5", textAlign: "center" }}>
+                          <span style={{ display: "inline-block", minWidth: 28, padding: "4px 6px", borderRadius: 6, background: course.grade === "S" || course.grade === "A" ? "#e7f7ee" : course.grade === "B" ? "#eaf0ff" : "#f3f4f6", color: course.grade === "S" || course.grade === "A" ? "#167447" : "#364152", fontWeight: 750 }}>{course.grade || "—"}</span>
+                        </td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #edf0f5", textAlign: "center" }}>{course.credits}</td>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #edf0f5", whiteSpace: "nowrap", color: "#59667c" }}>{course.year || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
         </section>
 
         <footer style={{ textAlign: "center", color: "#8993a3", fontSize: 11, lineHeight: 1.8 }}>成績表DI — 卒業要件の確認を支援するシミュレーターです。<br />正式な卒業判定は学校の規定を確認してください。</footer>
