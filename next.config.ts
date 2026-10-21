@@ -1,29 +1,15 @@
-<<<<<<< HEAD
-
 import type { NextConfig } from "next";
+
+const repoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
+const basePath =
+  process.env.GITHUB_ACTIONS === "true" && repoName
+    ? `/${repoName}`
+    : "";
 
 const nextConfig: NextConfig = {
   output: "export",
-  basePath: "/static/calccalc",
-=======
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
-  experimental: {
-    agentFeedback: true,
-  },
-  cacheComponents: true,
-  partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
->>>>>>> 1cdddc42ccedf0f06e386f31b69235b74d14ea73
+  basePath,
+  trailingSlash: true,
 };
 
 export default nextConfig;
