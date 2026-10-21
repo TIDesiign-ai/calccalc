@@ -495,6 +495,7 @@ export default function Home() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <button onClick={clearForm} style={buttonStyle}>すべてクリア</button>
               <button onClick={exportJson} style={buttonStyle}>JSONを書き出す ↓</button>
+<<<<<<< HEAD
               <label
                 style={{
                   ...buttonStyle,
@@ -520,6 +521,9 @@ export default function Home() {
                   }}
                 />
               </label>
+=======
+              <label style={{ ...buttonStyle, display: "inline-flex", alignItems: "center" }}>JSONを読み込む<input type="file" accept="application/json,.json" onChange={(event) => { importJson(event.target.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
+>>>>>>> 1cdddc42ccedf0f06e386f31b69235b74d14ea73
             </div>
           </div>
           <p style={{ color: "#718096", fontSize: 12, lineHeight: 1.8, marginTop: 0 }}>白い入力欄に数値を入力してください。合計列・不足単位は自動計算されるため、入力は不要です。表は横にスクロールできます。</p>

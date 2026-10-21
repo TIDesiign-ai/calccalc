@@ -1,5 +1,9 @@
 {
+<<<<<<< HEAD
   "name": "@calc/calccalc",
+=======
+  "name": "calccalc",
+>>>>>>> 1cdddc42ccedf0f06e386f31b69235b74d14ea73
   "version": "0.1.0",
   "private": true,
   "scripts": {
