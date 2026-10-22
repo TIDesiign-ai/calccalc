@@ -302,6 +302,7 @@ export default function Home() {
   const [importMessage, setImportMessage] = useState("");
   const [earnedCourses, setEarnedCourses] = useState<EarnedCourse[]>([]);
   const [courseSearch, setCourseSearch] = useState("");
+  const [showShortages, setShowShortages] = useState(false);
 
   const totalRequired = num(getCellValue("requirement", "graduationTotal", required, earned, enrolled));
   const totalEarned = num(getCellValue("earned", "graduationTotal", required, earned, enrolled));
@@ -549,19 +550,26 @@ export default function Home() {
         <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 22, marginBottom: 22 }}>
           <h2 style={{ fontSize: 20, margin: "0 0 6px" }}>選択科目の取得状況</h2>
           <p style={{ margin: "0 0 16px", color: "#718096", fontSize: 12, lineHeight: 1.7 }}>カテゴリごとに修得単位数と卒業要件を比較します。不足単位は「必要単位 − 修得単位」で表示します。</p>
+          <button
+            type="button"
+            onClick={() => setShowShortages((current) => !current)}
+            style={{ ...buttonStyle, marginBottom: 16, background: showShortages ? "#fff1f1" : "#ef1717", borderColor: showShortages ? "#fecaca" : "#ef1717", color: showShortages ? "#b91c1c" : "#fff" }}
+          >
+            {showShortages ? "赤色表示を解除" : "不足している科目を確認する"}
+          </button>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
             {creditCardGroups.selective.map((card) => (
-              <article key={card.key} style={{ border: `1px solid ${card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
-                <div style={{ fontSize: 13, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700, minHeight: 36 }}>{card.label}</div>
+              <article key={card.key} style={{ border: `1px solid ${showShortages && card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: showShortages && card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: showShortages && card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
+                <div style={{ fontSize: 13, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700, minHeight: 36 }}>{card.label}</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 5, margin: "10px 0 9px" }}>
-                  <strong style={{ fontSize: 25, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
-                  <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
-                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
+                  <strong style={{ fontSize: 25, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
+                  <span style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
                 </div>
-                <div style={{ height: 7, background: card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20, transition: "width .2s" }} /></div>
+                <div style={{ height: 7, background: showShortages && card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20, transition: "width .2s" }} /></div>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, fontSize: 12 }}>
-                  <strong style={{ color: card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong>
-                  {card.enrolledCredits > 0 && <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#a66b12" }}>履修中：{card.enrolledCredits}</span>}
+                  <strong style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong>
+                  {card.enrolledCredits > 0 && <span style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#a66b12" }}>履修中：{card.enrolledCredits}</span>}
                 </div>
               </article>
             ))}
@@ -573,17 +581,17 @@ export default function Home() {
           <p style={{ margin: "0 0 16px", color: "#718096", fontSize: 12, lineHeight: 1.7 }}>必修科目と職業専門コア科目について、修得済み単位と不足単位を確認できます。</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
             {creditCardGroups.mandatory.map((card) => (
-              <article key={card.key} style={{ border: `1px solid ${card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
-                <div style={{ fontSize: 13, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700, minHeight: 36 }}>{card.label}</div>
+              <article key={card.key} style={{ border: `1px solid ${showShortages && card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: showShortages && card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: showShortages && card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
+                <div style={{ fontSize: 13, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700, minHeight: 36 }}>{card.label}</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 5, margin: "10px 0 9px" }}>
-                  <strong style={{ fontSize: 25, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
-                  <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
-                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
+                  <strong style={{ fontSize: 25, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
+                  <span style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
                 </div>
-                <div style={{ height: 7, background: card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20, transition: "width .2s" }} /></div>
+                <div style={{ height: 7, background: showShortages && card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20, transition: "width .2s" }} /></div>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, fontSize: 12 }}>
-                  <strong style={{ color: card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong>
-                  {card.enrolledCredits > 0 && <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#a66b12" }}>履修中：{card.enrolledCredits}</span>}
+                  <strong style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong>
+                  {card.enrolledCredits > 0 && <span style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#a66b12" }}>履修中：{card.enrolledCredits}</span>}
                 </div>
               </article>
             ))}
@@ -594,15 +602,15 @@ export default function Home() {
           <h2 style={{ fontSize: 20, margin: "0 0 6px" }}>その他の卒業要件</h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
             {creditCardGroups.other.map((card) => (
-              <article key={card.key} style={{ border: `1px solid ${card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
-                <div style={{ fontSize: 13, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700 }}>{card.label}</div>
+              <article key={card.key} style={{ border: `1px solid ${showShortages && card.hasData && card.shortageCredits > 0 ? "#b91c1c" : "#e2e8f0"}`, borderRadius: 13, padding: 16, background: showShortages && card.hasData && card.shortageCredits > 0 ? "#ef1717" : "#fff", color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#172033", boxShadow: showShortages && card.hasData && card.shortageCredits > 0 ? "0 4px 12px rgba(185,28,28,.18)" : "none" }}>
+                <div style={{ fontSize: 13, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#59667c", fontWeight: 700 }}>{card.label}</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 5, margin: "10px 0 9px" }}>
-                  <strong style={{ fontSize: 25, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
-                  <span style={{ color: card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
-                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
+                  <strong style={{ fontSize: 25, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#2457d6" }}>{card.hasData ? card.earnedCredits : "—"}</strong>
+                  <span style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#ffe5e5" : "#8993a3", fontSize: 13 }}>/ {card.hasData ? card.requiredCredits : "—"} 単位</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#3563e9" }}>{card.hasData && card.requiredCredits > 0 ? `${card.progressPercent.toFixed(0)}%` : "—"}</span>
                 </div>
-                <div style={{ height: 7, background: card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20 }} /></div>
-                <div style={{ marginTop: 12, fontSize: 12 }}><strong style={{ color: card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong></div>
+                <div style={{ height: 7, background: showShortages && card.hasData && card.shortageCredits > 0 ? "rgba(255,255,255,.35)" : "#edf0f5", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${card.progressPercent}%`, height: "100%", background: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : "#5a80e5", borderRadius: 20 }} /></div>
+                <div style={{ marginTop: 12, fontSize: 12 }}><strong style={{ color: showShortages && card.hasData && card.shortageCredits > 0 ? "#fff" : card.shortageCredits > 0 ? "#b45309" : "#16804a" }}>{card.hasData ? `不足：${card.shortageCredits}単位` : "不足：—"}</strong></div>
               </article>
             ))}
           </div>

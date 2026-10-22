@@ -1,6 +1,5 @@
 {
-
-  "name": "calccalc",
+  "name": "@calc/calccalc",
   "version": "0.1.0",
   "private": true,
   "scripts": {
