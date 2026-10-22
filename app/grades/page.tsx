@@ -118,7 +118,6 @@ export default function GradesPage() {
   return (
     <main style={{ minHeight: "100vh", background: "#f4f6fb", color: "#172033", fontFamily: "Arial, 'Noto Sans JP', sans-serif" }}>
       <header style={{ background: "#fff", borderBottom: "1px solid #e3e8f0", padding: "18px max(4%, calc((100% - 1180px) / 2))", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <a href="/" style={{ fontSize: 20, fontWeight: 800, color: "#172033", textDecoration: "none" }}>成績表<span style={{ color: "#3563e9" }}>DI</span></a>
         <span style={{ fontSize: 12, color: "#758198" }}>科目別成績ビューア</span>
       </header>
       <div style={{ width: "min(1180px, 94%)", margin: "0 auto", padding: "30px 0 48px" }}>
