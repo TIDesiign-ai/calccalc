@@ -468,8 +468,35 @@ export default function Home() {
             <span style={{ fontSize: 28 }} aria-hidden="true">⇧</span>
             <strong style={{ fontSize: 15, color: "#26344d" }}>成績表のHTMLファイルを選択</strong>
             <span style={{ fontSize: 12, color: "#718096" }}>{gradeFileName || ".html / .htm 対応"}</span>
-            <input type="file" accept=".html,.htm,text/html" onChange={(event) => { void importGradeFile(event.target.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} />
-          </label>
+            <input
+              type="file"
+              accept=".html,.htm,text/html"
+              onChange={async (event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+
+                if (!file) {
+                  console.log("[成績表DI] ファイルが選択されていません");
+                  return;
+                }
+
+                console.log("[成績表DI] 選択ファイル:", {
+                  name: file.name,
+                  type: file.type,
+                  size: file.size,
+                });
+
+                try {
+                  await importGradeFile(file);
+                } catch (error) {
+                  console.error("[成績表DI] 読み込みエラー:", error);
+                  setImportMessage("読み込み中にエラーが発生しました。開発者ツールのConsoleを確認してください。");
+                } finally {
+                  input.value = "";
+                }
+              }}
+              style={{ display: "none" }}
+            />          </label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 12 }}>
             <span style={{ fontSize: 12, color: "#718096" }}>※ ファイル全体から成績表テーブルを自動検出します。</span>
           </div>
